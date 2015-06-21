@@ -1,0 +1,159 @@
+---
+title: "Machine Learning Project"
+author: "Shahram Sharaf"
+output: html_document
+---
+
+##Executive Summary
+###Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible 
+to collect a large amount of data about personal activity relatively 
+inexpensively. These type of devices are part of the quantified self movement - 
+a group of enthusiasts who take measurements about themselves regularly to 
+improve their health, to find patterns in their behavior, or because they are 
+tech geeks. One thing that people regularly do is quantify how much of a 
+particular activity they do, but they rarely quantify how well they do it. 
+
+###Project
+
+In this analysis, the data from accelerometers on the belt, forearm, arm, and 
+dumbell of 6 participants is to be used to predict which of the 5 exercise 
+classes were used.
+
+Our analysis shows that a Random Forest analysis offers a predictive model with 
+high accuracy.  This model was used to predict the outcomes of the 20 cases in 
+the test data set.
+
+##Analysis
+As the first step, required libraries are loaded.  A random variable seed is 
+also set in order to ensure the reproducibility of the analysis.
+```{r, results="hide",message=FALSE, warning=FALSE}
+library(dplyr)
+library(caret)
+library(rpart.plot)
+set.seed (3624)
+```
+
+###Data Loading and Transformation
+We first load and examine the data.  Based on this examination, we conduct a few  
+basic transformation of the data.
+
+```{r}
+setInternet2(TRUE)
+train<-read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",
+                as.is=TRUE, na.strings=c("", "NA"))
+test<-read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", 
+               as.is=TRUE, na.strings=c("","NA"))
+
+```
+
+Because it is smaller, the test data set is used to examine the data and create 
+a tidy data set.
+
+```{r, results="hide"}
+summary(test)
+head(test)
+```
+
+This examination shows that there are a number of fields for which all values 
+are NA.  As a result, these fields are not useful in a predictive model.  
+Additionally, field identifiers such as the name of the subject and the time of 
+the observation are not relevant to the purpose of this analysis.  These fields 
+are removed before modeling.
+
+```{r}
+colsna<-colnames(test[, apply(is.na(test), 2, all)])
+train<-select(train, -one_of(colsna))
+train<-train[,-(1:7)]
+test<-select(test, -one_of(colsna))
+test<-test[,-(1:7)]
+```
+
+The data is then preprocessed for improved model fit.  Given the number of 
+features in the set, modeling with high accuracy is expensive in terms of time 
+and processing power.  So, a number of preprocessing approaches were examined, 
+including Principal Component Analysis.  It turned out that using PCA to reduce 
+the number of features while maintaining a high accuracy threshold did not 
+significantly reduce the processing time.  So, the data was preprocessed to 
+scale and center the features.
+
+
+```{r}
+preProcValues <- preProcess(train[,-53], method = c("center", "scale"))
+trainTransformed <- predict(preProcValues, train[,-53])
+trainTransformed<-cbind(trainTransformed,"classe"=factor(train$classe))
+testTransformed <- predict(preProcValues, test[,-53])
+```
+
+Another trade off in processing time and accuracy is in terms of the size of the 
+training data set.  Multiple training runs indicate that using even 25% of the 
+training set can result in a high accuracy model.  For the final report, the 
+training set was split to two equal sets for the purposes of training and 
+validation of the data.
+
+```{r}
+inTrain<-createDataPartition(y=trainTransformed$classe,p=0.5,list=FALSE)
+training<-trainTransformed[inTrain,]
+validation<-trainTransformed[-inTrain,]
+```
+
+The final training set is examined to ensure the proper distribution of the 
+target outcome.
+
+
+```{r}
+plot(training$classe, col="blue", 
+     main="Distribution of Classes in the Training Data", 
+     xlab="Class", ylab="Frequency")
+```
+
+It appears that there is a large number of data points for each exercise type.
+
+##Building the Model and Validation
+
+Multiple modeling approaches were considered and examined.  Two techniques are 
+reported in this analysis.  The first is a classification tree.  The model is 
+built and the classification tree is plotted.
+
+```{r}
+system.time(modelFit <- train(classe ~ ., method = "rpart", data = training))
+#system.time(modelFit <- train(classe ~ ., method = "rf", data = training))
+rpart.plot(modelFit$finalModel, main="Classification Tree", extra=102, under=TRUE, faclen=0)
+```
+
+The model is obviously very fast but it needs to be examined for accuracy using 
+the validation data.
+
+```{r}
+confmtx <- confusionMatrix(validation$classe, predict(modelFit, validation))
+confmtx
+```
+
+As indicated by the confusion matrix, this model has an overall accuracy of 
+`r round(100*confmtx$overall[1], 2)`%
+
+Another model is then built using the random forest technique.
+
+```{r}
+system.time(modelFit <- train(classe ~ ., method = "rf", data = training))
+```
+
+This model is much slower.  We then examine its accuracy , again using the 
+validation data.
+
+```{r}
+confmtx <- confusionMatrix(validation$classe, predict(modelFit, validation))
+confmtx
+```
+
+As indicated by the confusion matrix, this model has an overall accuracy of 
+`r round(100*confmtx$overall[1], 2)`%
+
+##Conclusion
+The random forest technique is much more effective in providing high accuracy 
+predictions.  This technique is applied to the test data for the final results.
+
+```{r}
+prediction<-predict(modelFit,testTransformed)
+prediction
+```
